@@ -1,0 +1,696 @@
+import tkinter as tk
+from tkinter import messagebox
+import random
+import json
+import os
+import calendar
+from datetime import date
+
+
+ARQUIVO_DADOS = "alunos_academia.json"
+
+MESES_PT = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+]
+
+calendario_estado = {"ano": date.today().year, "mes": date.today().month}
+
+
+def iniciar_sistema():
+    canvas_fundo_abertura.pack_forget()
+    canvas_fundo_principal.pack(fill="both", expand=True)
+
+
+# --- FUNÇÕES DE VALIDAÇÃO ---
+
+
+def validar_nome(texto):
+    return not any(char.isdigit() for char in texto)
+
+
+def validar_cpf(texto):
+    if any(char.isalpha() for char in texto):
+        return False
+    return len(texto) <= 14
+
+
+def validar_numerico_e_simbolos(texto):
+    return not any(char.isalpha() for char in texto)
+
+
+# --- PERSISTÊNCIA DE DADOS (JSON) ---
+
+
+def carregar_dados():
+    if not os.path.exists(ARQUIVO_DADOS):
+        return
+
+    try:
+        with open(ARQUIVO_DADOS, "r", encoding="utf-8") as arquivo:
+            alunos = json.load(arquivo)
+
+        for aluno in alunos:
+            texto_item = montar_texto_item(aluno)
+            listbox_alunos.insert(tk.END, texto_item)
+    except (json.JSONDecodeError, IOError):
+        messagebox.showwarning(
+            "Aviso", "Não foi possível carregar os dados salvos anteriormente."
+        )
+
+
+def salvar_dados():
+    alunos = []
+    for item in listbox_alunos.get(0, tk.END):
+        alunos.append(item)
+
+    try:
+        with open(ARQUIVO_DADOS, "w", encoding="utf-8") as arquivo:
+            json.dump(alunos, arquivo, ensure_ascii=False, indent=2)
+    except IOError:
+        messagebox.showerror("Erro", "Não foi possível salvar os dados no arquivo.")
+
+
+def montar_texto_item(aluno):
+    if isinstance(aluno, str):
+        return aluno
+    return (
+        f"{aluno['nome']} (CPF: {aluno['cpf']} | Nasc: {aluno['data_nasc']} | "
+        f"{aluno['idade']} anos | Tel: {aluno['telefone']} | {aluno['peso']}kg | "
+        f"{aluno['altura']}m | Obj: {aluno['objetivo']}) - Plano: {aluno['plano']}"
+    )
+
+
+def matricular():
+    nome = entry_nome.get().strip()
+    cpf = entry_cpf.get().strip()
+    data_nasc = entry_data_nasc.get().strip()
+    idade = entry_idade.get().strip()
+    telefone = entry_telefone.get().strip()
+    peso = entry_peso.get().strip()
+    altura = entry_altura.get().strip()
+    objetivo = entry_objetivo.get().strip()
+    plano = entry_plano.get().strip()
+
+    if (
+        not nome
+        or not cpf
+        or not data_nasc
+        or not idade
+        or not telefone
+        or not peso
+        or not altura
+        or not objetivo
+        or not plano
+    ):
+        messagebox.showwarning("Aviso", "Por favor, preencha todos os campos!")
+        return
+
+    planos_validos = ["mensal", "trimestral", "anual"]
+    if plano.lower() not in planos_validos:
+        messagebox.showerror(
+            "Erro no Plano",
+            "O campo Plano aceita apenas uma das opções: Mensal, Trimestral ou Anual!",
+        )
+        return
+
+    texto_item = f"{nome} (CPF: {cpf} | Nasc: {data_nasc} | {idade} anos | Tel: {telefone} | {peso}kg | {altura}m | Obj: {objetivo}) - Plano: {plano.capitalize()}"
+    listbox_alunos.insert(tk.END, texto_item)
+
+    salvar_dados()
+
+    entry_nome.delete(0, tk.END)
+    entry_cpf.delete(0, tk.END)
+    entry_data_nasc.config(state="normal")
+    entry_data_nasc.delete(0, tk.END)
+    entry_data_nasc.config(state="readonly")
+    entry_idade.delete(0, tk.END)
+    entry_telefone.delete(0, tk.END)
+    entry_peso.delete(0, tk.END)
+    entry_altura.delete(0, tk.END)
+    entry_objetivo.delete(0, tk.END)
+    entry_plano.delete(0, tk.END)
+
+
+def limpar_lista():
+    resposta = messagebox.askyesno(
+        "Confirmar", "Tem certeza que deseja apagar todos os alunos cadastrados?"
+    )
+    if resposta:
+        listbox_alunos.delete(0, tk.END)
+        salvar_dados()
+
+
+# --- CALENDÁRIO PARA DATA DE NASCIMENTO ---
+
+
+def abrir_calendario(event=None):
+    valor_atual = entry_data_nasc.get().strip()
+    if valor_atual and len(valor_atual) == 10:
+        try:
+            dia_s, mes_s, ano_s = valor_atual.split("/")
+            calendario_estado["ano"] = int(ano_s)
+            calendario_estado["mes"] = int(mes_s)
+        except (ValueError, IndexError):
+            calendario_estado["ano"] = date.today().year
+            calendario_estado["mes"] = date.today().month
+    else:
+        calendario_estado["ano"] = date.today().year
+        calendario_estado["mes"] = date.today().month
+
+    popup = tk.Toplevel(root)
+    popup.title("Selecionar Data de Nascimento")
+    popup.configure(bg=COR_PRETO)
+    popup.resizable(False, False)
+    popup.transient(root)
+    popup.grab_set()
+
+    frame_topo = tk.Frame(popup, bg=COR_PRETO)
+    frame_topo.pack(pady=(10, 5))
+
+    btn_anterior = tk.Button(
+        frame_topo,
+        text="<",
+        command=lambda: mudar_mes(-1),
+        bg=COR_AZUL,
+        fg=COR_TEXTO,
+        relief="flat",
+        width=3,
+        cursor="hand2",
+    )
+    btn_anterior.grid(row=0, column=0, padx=5)
+
+    label_mes_ano = tk.Label(
+        frame_topo,
+        text="",
+        font=("Arial", 12, "bold"),
+        bg=COR_PRETO,
+        fg=COR_AZUL_CLARO,
+        width=18,
+    )
+    label_mes_ano.grid(row=0, column=1)
+
+    btn_proximo = tk.Button(
+        frame_topo,
+        text=">",
+        command=lambda: mudar_mes(1),
+        bg=COR_AZUL,
+        fg=COR_TEXTO,
+        relief="flat",
+        width=3,
+        cursor="hand2",
+    )
+    btn_proximo.grid(row=0, column=2, padx=5)
+
+    frame_dias = tk.Frame(popup, bg=COR_PRETO)
+    frame_dias.pack(padx=10, pady=(0, 10))
+
+    def desenhar_calendario():
+        for widget in frame_dias.winfo_children():
+            widget.destroy()
+
+        ano = calendario_estado["ano"]
+        mes = calendario_estado["mes"]
+        label_mes_ano.config(text=f"{MESES_PT[mes - 1]} {ano}")
+
+        dias_semana = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
+        for col, dia_sem in enumerate(dias_semana):
+            tk.Label(
+                frame_dias,
+                text=dia_sem,
+                font=("Arial", 9, "bold"),
+                bg=COR_PRETO,
+                fg=COR_AZUL_CLARO,
+                width=4,
+            ).grid(row=0, column=col, padx=1, pady=1)
+
+        hoje = date.today()
+        semanas = calendar.monthcalendar(ano, mes)
+        for linha, semana in enumerate(semanas, start=1):
+            for col, dia in enumerate(semana):
+                if dia == 0:
+                    tk.Label(frame_dias, text="", bg=COR_PRETO, width=4).grid(
+                        row=linha, column=col, padx=1, pady=1
+                    )
+                else:
+                    data_dia = date(ano, mes, dia)
+                    desabilitado = data_dia > hoje
+                    btn_dia = tk.Button(
+                        frame_dias,
+                        text=str(dia),
+                        width=4,
+                        bg=COR_PRETO_CAMPO if not desabilitado else COR_PRETO,
+                        fg=COR_TEXTO if not desabilitado else "#555555",
+                        relief="flat",
+                        state="disabled" if desabilitado else "normal",
+                        cursor="hand2" if not desabilitado else "arrow",
+                        command=lambda d=dia: selecionar_dia(d),
+                    )
+                    btn_dia.grid(row=linha, column=col, padx=1, pady=1)
+
+    def mudar_mes(delta):
+        mes = calendario_estado["mes"] + delta
+        ano = calendario_estado["ano"]
+        if mes > 12:
+            mes = 1
+            ano += 1
+        elif mes < 1:
+            mes = 12
+            ano -= 1
+
+        hoje = date.today()
+        if (ano, mes) > (hoje.year, hoje.month):
+            return
+
+        calendario_estado["mes"] = mes
+        calendario_estado["ano"] = ano
+        desenhar_calendario()
+
+    def selecionar_dia(dia):
+        ano = calendario_estado["ano"]
+        mes = calendario_estado["mes"]
+        data_formatada = f"{dia:02d}/{mes:02d}/{ano}"
+        entry_data_nasc.config(state="normal")
+        entry_data_nasc.delete(0, tk.END)
+        entry_data_nasc.insert(0, data_formatada)
+        entry_data_nasc.config(state="readonly")
+        popup.destroy()
+
+    desenhar_calendario()
+
+    popup.update_idletasks()
+    x = root.winfo_x() + (root.winfo_width() // 2) - (popup.winfo_width() // 2)
+    y = root.winfo_y() + (root.winfo_height() // 2) - (popup.winfo_height() // 2)
+    popup.geometry(f"+{x}+{y}")
+
+
+def desenhar_fundo(canvas, width, height, cor_circulos, cor_linhas):
+    canvas.delete("fundo")
+
+    for _ in range(15):
+        x = random.randint(0, width)
+        y = random.randint(0, height)
+        raio = random.randint(10, 50)
+        canvas.create_oval(
+            x - raio,
+            y - raio,
+            x + raio,
+            y + raio,
+            outline=cor_circulos,
+            width=1,
+            tags="fundo",
+        )
+
+    for _ in range(10):
+        x1 = random.randint(0, width)
+        y1 = random.randint(0, height)
+        x2 = random.randint(0, width)
+        y2 = random.randint(0, height)
+        canvas.create_line(
+            x1, y1, x2, y2, fill=cor_linhas, width=1, dash=(4, 4), tags="fundo"
+        )
+
+
+def atualizar_fundo_abertura(event):
+    desenhar_fundo(
+        canvas_fundo_abertura, event.width, event.height, COR_PRETO_CAMPO, COR_AZUL
+    )
+
+
+def atualizar_fundo_principal(event):
+    desenhar_fundo(
+        canvas_fundo_principal, event.width, event.height, COR_PRETO_CAMPO, COR_AZUL
+    )
+
+
+root = tk.Tk()
+root.title("MaxenFit")
+root.geometry("600x950")
+root.resizable(False, False)
+
+vcmd_nome = (root.register(validar_nome), "%P")
+vcmd_cpf = (root.register(validar_cpf), "%P")
+vcmd_numerico = (root.register(validar_numerico_e_simbolos), "%P")
+
+# Paleta de Cores
+COR_PRETO = "#121212"
+COR_PRETO_CAMPO = "#1E1E1E"
+COR_AZUL = "#0056B3"
+COR_AZUL_CLARO = "#00A8FF"
+COR_TEXTO = "#FFFFFF"
+COR_CARD = "#181818"
+
+root.configure(bg=COR_PRETO)
+
+# ----------------------------------------------------
+# TELA DE ABERTURA (PRIMEIRA PÁGINA) - CARTÃO CENTRAL COM LOGO
+# ----------------------------------------------------
+canvas_fundo_abertura = tk.Canvas(root, bg=COR_PRETO, highlightthickness=0)
+canvas_fundo_abertura.pack(fill="both", expand=True)
+canvas_fundo_abertura.bind("<Configure>", atualizar_fundo_abertura)
+
+# Moldura externa do cartão (dá o efeito de borda/realce em azul-claro)
+frame_borda_card = tk.Frame(canvas_fundo_abertura, bg=COR_AZUL_CLARO, padx=2, pady=2)
+canvas_fundo_abertura.create_window(300, 475, window=frame_borda_card, anchor="center")
+
+# Cartão central
+card_abertura = tk.Frame(frame_borda_card, bg=COR_CARD, padx=35, pady=30)
+card_abertura.pack()
+
+# --- Logo em destaque dentro de um "selo" circular-ish ---
+frame_logo = tk.Frame(card_abertura, bg=COR_AZUL, padx=25, pady=18)
+frame_logo.pack(pady=(0, 20))
+
+label_titulo_abertura = tk.Label(
+    frame_logo,
+    text="MAXENFIT",
+    font=("Georgia", 34, "bold italic"),
+    bg=COR_AZUL,
+    fg=COR_TEXTO,
+)
+label_titulo_abertura.pack()
+
+label_subtitulo_academia = tk.Label(
+    frame_logo,
+    text="academia",
+    font=("Segoe Script", 14, "italic"),
+    bg=COR_AZUL,
+    fg=COR_TEXTO,
+)
+label_subtitulo_academia.pack(pady=(2, 0))
+
+# Linha divisória
+tk.Frame(card_abertura, bg=COR_AZUL_CLARO, height=2).pack(fill="x", pady=(0, 15))
+
+label_subtitulo_aulas = tk.Label(
+    card_abertura,
+    text="NOSSAS AULAS",
+    font=("Arial", 13, "bold"),
+    bg=COR_CARD,
+    fg=COR_AZUL_CLARO,
+)
+label_subtitulo_aulas.pack(pady=(0, 10))
+
+aulas = [
+    "Pilates",
+    "Fit Dance",
+    "Yoga",
+    "Bike Indoor",
+    "Musculação",
+    "Cross Training",
+    "Natação",
+    "Muay Thai",
+]
+
+frame_aulas = tk.Frame(card_abertura, bg=COR_CARD)
+frame_aulas.pack(fill="x", pady=5)
+
+for i, aula in enumerate(aulas):
+    lbl_aula = tk.Label(
+        frame_aulas,
+        text=aula,
+        font=("Arial", 12),
+        bg=COR_CARD,
+        fg=COR_TEXTO,
+        anchor="center",
+        width=15,
+    )
+    lbl_aula.grid(row=i // 2, column=i % 2, padx=8, pady=4)
+
+btn_comecar = tk.Button(
+    card_abertura,
+    text="COMEÇAR",
+    font=("Arial", 14, "bold"),
+    command=iniciar_sistema,
+    bg=COR_AZUL,
+    fg=COR_TEXTO,
+    activebackground=COR_AZUL_CLARO,
+    activeforeground=COR_PRETO,
+    padx=40,
+    pady=12,
+    relief="flat",
+    cursor="hand2",
+)
+btn_comecar.pack(pady=(20, 0))
+
+# ----------------------------------------------------
+# TELA PRINCIPAL (SEGUNDA PÁGINA)
+# ----------------------------------------------------
+canvas_fundo_principal = tk.Canvas(root, bg=COR_PRETO, highlightthickness=0)
+canvas_fundo_principal.bind("<Configure>", atualizar_fundo_principal)
+
+frame_principal = tk.Frame(canvas_fundo_principal, bg=COR_PRETO)
+canvas_fundo_principal.create_window(300, 475, window=frame_principal, anchor="center")
+
+# --- LOGO COMPACTO NA TELA PRINCIPAL ---
+frame_logo_principal = tk.Frame(frame_principal, bg=COR_AZUL, padx=15, pady=8)
+frame_logo_principal.pack(pady=(5, 10))
+
+tk.Label(
+    frame_logo_principal,
+    text="MAXENFIT",
+    font=("Georgia", 20, "bold italic"),
+    bg=COR_AZUL,
+    fg=COR_TEXTO,
+).pack()
+
+tk.Label(
+    frame_logo_principal,
+    text="academia",
+    font=("Segoe Script", 10, "italic"),
+    bg=COR_AZUL,
+    fg=COR_TEXTO,
+).pack()
+
+# --- DADOS PESSOAIS ---
+label_div_pessoais = tk.Label(
+    frame_principal,
+    text="--- DADOS PESSOAIS ---",
+    font=("Arial", 10, "bold"),
+    bg=COR_PRETO,
+    fg=COR_AZUL_CLARO,
+)
+label_div_pessoais.pack(anchor="w", padx=25, pady=(5, 2))
+
+# Nome
+tk.Label(frame_principal, text="Nome do aluno (sem números):", bg=COR_PRETO, fg=COR_TEXTO).pack(
+    anchor="w", padx=25
+)
+entry_nome = tk.Entry(
+    frame_principal,
+    width=65,
+    validate="key",
+    validatecommand=vcmd_nome,
+    bg=COR_PRETO_CAMPO,
+    fg=COR_TEXTO,
+    insertbackground=COR_TEXTO,
+    relief="solid",
+    bd=1,
+)
+entry_nome.pack(padx=25, pady=(0, 4))
+
+# CPF
+tk.Label(frame_principal, text="CPF (sem letras | máx. 14):", bg=COR_PRETO, fg=COR_TEXTO).pack(
+    anchor="w", padx=25
+)
+entry_cpf = tk.Entry(
+    frame_principal,
+    width=65,
+    validate="key",
+    validatecommand=vcmd_cpf,
+    bg=COR_PRETO_CAMPO,
+    fg=COR_TEXTO,
+    insertbackground=COR_TEXTO,
+    relief="solid",
+    bd=1,
+)
+entry_cpf.pack(padx=25, pady=(0, 4))
+
+# Data de Nascimento
+tk.Label(
+    frame_principal, text="Data de Nascimento (clique para escolher no calendário):", bg=COR_PRETO, fg=COR_TEXTO
+).pack(anchor="w", padx=25)
+entry_data_nasc = tk.Entry(
+    frame_principal,
+    width=65,
+    state="readonly",
+    readonlybackground=COR_PRETO_CAMPO,
+    fg=COR_TEXTO,
+    relief="solid",
+    bd=1,
+    cursor="hand2",
+)
+entry_data_nasc.pack(padx=25, pady=(0, 4))
+entry_data_nasc.bind("<Button-1>", abrir_calendario)
+
+# Idade
+tk.Label(frame_principal, text="Idade (sem letras):", bg=COR_PRETO, fg=COR_TEXTO).pack(
+    anchor="w", padx=25
+)
+entry_idade = tk.Entry(
+    frame_principal,
+    width=65,
+    validate="key",
+    validatecommand=vcmd_numerico,
+    bg=COR_PRETO_CAMPO,
+    fg=COR_TEXTO,
+    insertbackground=COR_TEXTO,
+    relief="solid",
+    bd=1,
+)
+entry_idade.pack(padx=25, pady=(0, 4))
+
+# Peso
+tk.Label(frame_principal, text="Peso (kg - sem letras):", bg=COR_PRETO, fg=COR_TEXTO).pack(
+    anchor="w", padx=25
+)
+entry_peso = tk.Entry(
+    frame_principal,
+    width=65,
+    validate="key",
+    validatecommand=vcmd_numerico,
+    bg=COR_PRETO_CAMPO,
+    fg=COR_TEXTO,
+    insertbackground=COR_TEXTO,
+    relief="solid",
+    bd=1,
+)
+entry_peso.pack(padx=25, pady=(0, 4))
+
+# Altura
+tk.Label(frame_principal, text="Altura (m - sem letras):", bg=COR_PRETO, fg=COR_TEXTO).pack(
+    anchor="w", padx=25
+)
+entry_altura = tk.Entry(
+    frame_principal,
+    width=65,
+    validate="key",
+    validatecommand=vcmd_numerico,
+    bg=COR_PRETO_CAMPO,
+    fg=COR_TEXTO,
+    insertbackground=COR_TEXTO,
+    relief="solid",
+    bd=1,
+)
+entry_altura.pack(padx=25, pady=(0, 4))
+
+# Objetivo
+tk.Label(frame_principal, text="Objetivo:", bg=COR_PRETO, fg=COR_TEXTO).pack(
+    anchor="w", padx=25
+)
+entry_objetivo = tk.Entry(
+    frame_principal,
+    width=65,
+    bg=COR_PRETO_CAMPO,
+    fg=COR_TEXTO,
+    insertbackground=COR_TEXTO,
+    relief="solid",
+    bd=1,
+)
+entry_objetivo.pack(padx=25, pady=(0, 4))
+
+# --- CONTATO ---
+label_div_contato = tk.Label(
+    frame_principal,
+    text="--- CONTATO ---",
+    font=("Arial", 10, "bold"),
+    bg=COR_PRETO,
+    fg=COR_AZUL_CLARO,
+)
+label_div_contato.pack(anchor="w", padx=25, pady=(8, 2))
+
+# Telefone
+tk.Label(frame_principal, text="Telefone (sem letras):", bg=COR_PRETO, fg=COR_TEXTO).pack(
+    anchor="w", padx=25
+)
+entry_telefone = tk.Entry(
+    frame_principal,
+    width=65,
+    validate="key",
+    validatecommand=vcmd_numerico,
+    bg=COR_PRETO_CAMPO,
+    fg=COR_TEXTO,
+    insertbackground=COR_TEXTO,
+    relief="solid",
+    bd=1,
+)
+entry_telefone.pack(padx=25, pady=(0, 4))
+
+# --- PLANO ---
+label_div_plano = tk.Label(
+    frame_principal,
+    text="--- PLANO ---",
+    font=("Arial", 10, "bold"),
+    bg=COR_PRETO,
+    fg=COR_AZUL_CLARO,
+)
+label_div_plano.pack(anchor="w", padx=25, pady=(8, 2))
+
+# Plano
+tk.Label(
+    frame_principal,
+    text="Plano (digite: mensal, trimestral ou anual):",
+    bg=COR_PRETO,
+    fg=COR_TEXTO,
+).pack(anchor="w", padx=25)
+entry_plano = tk.Entry(
+    frame_principal,
+    width=65,
+    bg=COR_PRETO_CAMPO,
+    fg=COR_TEXTO,
+    insertbackground=COR_TEXTO,
+    relief="solid",
+    bd=1,
+)
+entry_plano.pack(padx=25, pady=(0, 10))
+
+# Botão Matricular
+btn_matricular = tk.Button(
+    frame_principal,
+    text="MATRICULAR ALUNO",
+    command=matricular,
+    bg=COR_AZUL,
+    fg=COR_TEXTO,
+    font=("Arial", 11, "bold"),
+    relief="flat",
+    cursor="hand2",
+)
+btn_matricular.pack(fill="x", padx=25, pady=(0, 10))
+
+# --- LISTA DE CADASTRADOS ---
+label_div_lista = tk.Label(
+    frame_principal,
+    text="--- LISTA DE CADASTRADOS ---",
+    font=("Arial", 10, "bold"),
+    bg=COR_PRETO,
+    fg=COR_AZUL_CLARO,
+)
+label_div_lista.pack(anchor="w", padx=25, pady=(4, 2))
+
+listbox_alunos = tk.Listbox(
+    frame_principal,
+    height=5,
+    bg=COR_PRETO_CAMPO,
+    fg=COR_TEXTO,
+    selectbackground=COR_AZUL,
+    relief="solid",
+    bd=1,
+)
+listbox_alunos.pack(fill="both", expand=True, padx=25, pady=(0, 8))
+
+btn_limpar = tk.Button(
+    frame_principal,
+    text="LIMPAR LISTA",
+    command=limpar_lista,
+    bg=COR_AZUL_CLARO,
+    fg=COR_PRETO,
+    font=("Arial", 10, "bold"),
+    relief="flat",
+    cursor="hand2",
+)
+btn_limpar.pack(fill="x", padx=25, pady=(0, 10))
+
+# Carrega os dados salvos anteriormente (se existirem) na lista
+carregar_dados()
+
+root.mainloop()
